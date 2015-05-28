@@ -9,11 +9,14 @@ require_relative 'lib/pod_quality_estimate'
 require 'sprockets'
 require 'set'
 require 'digest/md5'
+require 'rufus-lru'
 
 class App < Sinatra::Base
   configure do
     use Rack::Deflater
   end
+
+  @@readme_cache = Rufus::Lru::Hash.new(500)
 
   helpers do
     # Note: This is a hack that needs to be extracted into the
@@ -123,10 +126,8 @@ class App < Sinatra::Base
 
     @commit = commits.where(pod_version_id: @version.id, deleted_file_during_import: false).order_by(:created_at.desc).first
     @pod = Pod::Specification.from_json @commit.specification_data
-        
-    uri = URI(@cocoadocs["rendered_readme_url"])
-    res = Net::HTTP.get_response(uri)
-    @readme_html = res.body.force_encoding('UTF-8') if res.is_a?(Net::HTTPSuccess)
+
+    @readme_html = get_rendered_readme(@cocoadocs["rendered_readme_url"])
     slim :pod, :layout => false
   end
 
@@ -135,6 +136,18 @@ class App < Sinatra::Base
   #
   def metrics
     pods.outer_join(:github_pod_metrics).on(:id => :pod_id).join(:cocoadocs_pod_metrics).on(:id => :pod_id)
+  end
+
+  def get_rendered_readme(url)
+    return @@readme_cache[url] if @@readme_cache[url]
+
+    uri = URI(url)
+    res = Net::HTTP.get_response(uri)
+    return nil unless  res.is_a?(Net::HTTPSuccess)
+
+    body = res.body.force_encoding('UTF-8')
+    @@readme_cache[url] = body
+    body
   end
 
   # Setup assets.
