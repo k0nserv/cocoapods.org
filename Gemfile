@@ -27,6 +27,8 @@ gem 'sprockets'
 
 gem 'httparty'
 
+gem 'rufus-lru'
+
 group :development, :production do
   gem 'foreman'
   gem 'thin'
